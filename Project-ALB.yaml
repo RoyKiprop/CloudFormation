@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: " CloudFormation Template for creating an Application Load Balancer"
+Parameters:
+  ExportVpcStackName:
+    Description: The name of the vpc stack that exports values
+    Type: String
+
+Resources:
+#Create an Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: Practice-ALB
+      Scheme: internet-facing
+      SecurityGroups:
+        - Fn::ImportValue: !Sub ${ExportVpcStackName}-ALBSecurityGroup
+      Subnets:
+        - Fn::ImportValue: !Sub ${ExportVpcStackName}-PublicSubnetA
+        - Fn::ImportValue: !Sub ${ExportVpcStackName}-PublicSubnetB
+  ALBTargetGroups:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Matcher:
+        HttpCode: "200,315"
+      Name:   project-Webservers
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId:
+        Fn::ImportValue: !Sub ${ExportVpcStackName}-VPC
+
+#Configure a listener on port 80
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupARN: !Ref ALBTargetGroups
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+Outputs:
+# Export Target Group
+  ALBTargetGroups:
+    Description: Webserver target group
+    Export:
+      Name: !Sub ${AWS::StackName}-ALBTargetGroups
+    Value: !Ref ALBTargetGroups
+# Export ALB
+  ApplicationLoadBalancer:
+    Description: Application Load Balancer
+    Export:
+      Name: !Sub ${AWS::StackName}-ApplicationLoadBalancer
+    Value: !Ref ApplicationLoadBalancer
+
+# Export Application Load Balancer Dns Name
+  ApplicationLoadBalancerDnsName:
+    Description: Application Load Balancer DNS Name
+    Export:
+      Name: !Sub ${AWS::StackName}-ApplicationLoadBalancerDnsName
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+

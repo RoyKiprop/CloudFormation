@@ -1,0 +1,119 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "CloudFormation Template for ASG"
+
+Parameters:
+  ExportVpcStackName:
+    Description: The name of the vpc stack that exports values
+    Type: String
+
+  ExportAlbStackName:
+    Description: The name of the alb stack that exports values
+    Type: String
+
+  EMail:
+    Description: A valid EMail address to notify when there are any scaling actions
+    Type: String
+
+  EC2KeyPair:
+    Description: Name of an EC2 KeyPair to enable SSH access to the instance.
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair.
+
+  EC2ImageID:
+    Description: The ID of the custom AMI
+    Type: String
+    Default: "ami-0131822963d2a218d"
+
+  LaunchTemplateName:
+    AllowedPattern: '[a-zA-Z0-9\(\)\.\-/_]+'
+    ConstraintDescription: Must be unique to this account with  128 chars max. No spaces or special characters.
+    Default: MywebServerLT
+    Description: launch template name
+    Type: String
+
+  InstanceType:
+    Description: WebServers EC2 instance type
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.small
+      - t3.nano
+      - t3.micro
+      - t3.large
+    ConstraintDescription: A valid EC2 instance type.
+Resources:
+  ProjectLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Ref LaunchTemplateName
+      LaunchTemplateData:
+        ImageId: !Ref EC2ImageID
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref EC2KeyPair
+        Monitoring:
+          Enabled: false
+        UserData: !Base64 |
+          #!/bin/bash
+          sudo su
+          yum update -y                      
+          yum install -y httpd               
+          systemctl start httpd              
+          systemctl enable httpd             
+          echo "<h1>Welcome to Roy Kiprop Web Server</h1>" > /var/www/html/index.html
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub ${ExportVpcStackName}-ProjectWebServerSecurityGroup
+
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: !Ref EMail
+          Protocol: email
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: WebServer-ASG
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub ${ExportVpcStackName}-PublicSubnetA
+        - Fn::ImportValue: !Sub ${ExportVpcStackName}-PublicSubnetB
+      HealthCheckGracePeriod: 400
+      HealthCheckType: ELB
+      LaunchTemplate:
+        LaunchTemplateName: !Ref LaunchTemplateName
+        Version: !GetAtt ProjectLaunchTemplate.LatestVersionNumber
+      MinSize: 1
+      MaxSize: 3
+      DesiredCapacity: 2
+      Tags:
+        - Key: Name
+          Value: WebServer-ASG
+          PropagateAtLaunch: true
+      TargetGroupARNs:
+        - Fn::ImportValue: !Sub ${ExportAlbStackName}-ALBTargetGroups
+      NotificationConfiguration:
+        TopicARN: !Ref NotificationTopic
+        NotificationTypes:
+          - 'autoscaling:EC2_INSTANCE_LAUNCH'
+          - 'autoscaling:EC2_INSTANCE_LAUNCH_ERROR'
+          - 'autoscaling:EC2_INSTANCE_TERMINATE'
+          - 'autoscaling:EC2_INSTANCE_TERMINATE_ERROR'
+
+  WebServerScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      Cooldown: 45
+      ScalingAdjustment: 1
+
+  WebServerScaleDownPolicy:
+    Type: 'AWS::AutoScaling::ScalingPolicy'
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      Cooldown: 45
+      ScalingAdjustment: -1
+
+
+

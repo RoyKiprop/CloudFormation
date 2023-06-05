@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "CloudFormation Template for creating RDS Database"
+Parameters:
+  ExportVpcStackName:
+    Description: The name of the vpc stack that exports values
+    Type: String
+  ExportASGStackName:
+    Description: The name of the ASG stack that exports values
+    Type: String
+  DatabaseInstanceIdentifier:
+    AllowedPattern: '^[a-zA-Z0-9]+$'
+    ConstraintDescription: contain only Alphanumerical characters
+    Default:  Database1
+    Description: DB Instance Identifier
+    MaxLength: 72
+    MinLength: 1
+    Type: String
+  DatabaseName:
+    AllowedPattern: '^[a-zA-Z0-9]+$'
+    ConstraintDescription: contain only Alphanumerical characters
+    Default: ProjectDatabase
+    Description: my project database
+    MaxLength: 56
+    MinLength: 1
+    Type: String
+  DatabaseUsername:
+    AllowedPattern: '^[a-zA-Z0-9]+$'
+    ConstraintDescription: Must start with a letter and must contain alphanumerical characters
+    Default: admin
+    Description: database username
+    MaxLength: 8
+    MinLength: 2
+    NoEcho: true
+    Type: String
+
+  DatabasePassword:
+    AllowedPattern: '^[a-zA-Z0-9]+$'
+    ConstraintDescription: Must contain only Alphanumerical characters
+    Default: Project123
+    Description: database password
+    MaxLength: 12
+    MinLength: 2
+    NoEcho: true
+    Type: String
+  DatabaseAllocatedStorage:
+    ConstraintDescription:  Must be an integer from 20 to 65536.
+    Default: 20
+    Description: Database storage
+    MaxValue: 65536
+    MinValue: 5
+    Type: Number
+
+  DatabaseInstanceClass:
+    AllowedValues:
+      - db.m5d.large
+      - db.m5d.xlarge
+      - db.m5d.2xlarge
+    ConstraintDescription: Must be a valid database instance type
+    Default: db.m5d.xlarge
+    Description: The database instance type
+    Type: String
+  MultiAZ:
+    AllowedValues:
+        - false
+        - true
+    ConstraintDescription: Either true or false
+    Default: false
+    Description: Creates a Multi-AZ MySQL RDS database instance
+    Type: String
+Resources:
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: RDS subnet group
+      DBSubnetGroupName: DB-SubnetGroup
+      SubnetIds:
+        - Fn::ImportValue: !Sub ${ExportVpcStackName}-PrivateSubnetA
+        - Fn::ImportValue: !Sub ${ExportVpcStackName}-PrivateSubnetB
+      Tags:
+        - Key: Name
+          Value: DB Subnets
+  DatabaseInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: !Ref DatabaseAllocatedStorage
+      AvailabilityZone: !Select [0, !GetAZs '' ]
+      BackupRetentionPeriod: 7
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBInstanceIdentifier: !Ref DatabaseInstanceIdentifier
+      DBName: !Ref DatabaseName
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      Engine: MySQL
+      EngineVersion: 8.0.32
+      MasterUsername: !Ref DatabaseUsername
+      MasterUserPassword: !Ref DatabasePassword
+      MultiAZ: !Ref MultiAZ
+      PubliclyAccessible: false
+      VPCSecurityGroups:
+        - Fn::ImportValue: !Sub ${ExportVpcStackName}-DatabaseSecurityGroup
+
+
+
+
